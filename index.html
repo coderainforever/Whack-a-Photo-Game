@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whack-a-Photo Game</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Add the hammer cursor to the entire game area */
+        body {
+            /* Hammer emoji embedded as SVG data URL. The '15 15' sets the click hotspot (tip of the hammer head). */
+            cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewport='0 0 100 100' style='font-size:30px;'><text y='30'>🔨</text></svg>") 15 15, default;
+        }
+        
+        /* Custom styles to create the "hole" and "pop-up" effect */
+        .hole {
+            position: relative;
+            overflow: hidden; /* Hide the mole when it's underground */
+            background-color: #5d4037; /* Brown color for the ground */
+            border-radius: 50%;
+            width: 100%;
+            padding-bottom: 100%; /* Maintain a 1:1 aspect ratio for circular holes */
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5), 0 5px 0 #3e2723;
+            transform: translateY(10px); /* Slightly sink the hole into the 'ground' */
+        }
+
+        .mole {
+            position: absolute;
+            top: 100%; /* Start below the visible area (underground) */
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #3e2723;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* We explicitly set the cursor here to ensure the hammer icon remains on the clickable moles */
+            cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewport='0 0 100 100' style='font-size:30px;'><text y='30'>🔨</text></svg>") 15 15, pointer;
+            transition: top 0.1s ease-out; /* Animation for popping up/down */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .mole-image {
+            width: 90%;
+            height: 90%;
+            object-fit: cover;
+            border-radius: 50%;
+            pointer-events: none; /* Allows click to pass through to the .mole div */
+        }
+
+        .mole.up {
+            top: 0; /* Move to the top (popped up) */
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+
+        /* Ensure the grid container is sized appropriately */
+        #board {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .whacked {
+            animation: pulse 0.1s ease-in-out;
+            background-color: #ef4444 !important; /* Flash red when whacked */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col items-center font-sans">
+
+    <!-- Game Title and Instructions -->
+    <header class="text-center mb-8">
+        <h1 class="text-5xl font-extrabold mb-2 text-yellow-400 tracking-wider">WHACK-A-PHOTO</h1>
+        <p class="text-gray-400">Upload an image, hit the face when it appears, and beat the clock!</p>
+    </header>
+
+    <!-- Controls and Score Panel -->
+    <div class="w-full max-w-lg bg-gray-800 p-4 rounded-xl shadow-lg mb-6 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+        <div class="flex flex-col items-center">
+            <span class="text-2xl font-bold text-green-400">SCORE</span>
+            <span id="score-display" class="text-4xl font-extrabold">0</span>
+        </div>
+        <div class="flex flex-col items-center">
+            <span class="text-2xl font-bold text-red-400">TIME</span>
+            <span id="time-display" class="text-4xl font-extrabold">30</span>
+        </div>
+
+        <button id="start-button" onclick="startGame()" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-lg rounded-full shadow-xl transition duration-200">
+            START GAME
+        </button>
+    </div>
+
+    <!-- Image Upload Area -->
+    <div class="w-full max-w-lg bg-gray-800 p-4 rounded-xl shadow-lg mb-6">
+        <label class="block text-sm font-medium text-gray-300 mb-2">Upload Photo for Whacking (Optional)</label>
+        <input type="file" id="photo-upload" accept="image/*" class="w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-indigo-50 file:text-indigo-700
+            hover:file:bg-indigo-100"
+            onchange="loadPhoto(event)"
+        >
+    </div>
+
+    <!-- Game Board -->
+    <div id="board" class="grid grid-cols-3 gap-6 p-4 bg-gray-700 rounded-3xl shadow-2xl border-4 border-gray-600 w-full max-w-xl md:max-w-3xl aspect-square">
+        <!-- The holes will be dynamically generated here by JS for simplicity, or we can hardcode 9 -->
+        <!-- Hardcoding 9 holes for structure and using a loop in JS for setup -->
+        <div class="hole">
+            <div id="mole-0" class="mole" data-index="0" onclick="whack(event)">
+                <img id="image-0" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-1" class="mole" data-index="1" onclick="whack(event)">
+                <img id="image-1" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-2" class="mole" data-index="2" onclick="whack(event)">
+                <img id="image-2" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-3" class="mole" data-index="3" onclick="whack(event)">
+                <img id="image-3" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-4" class="mole" data-index="4" onclick="whack(event)">
+                <img id="image-4" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-5" class="mole" data-index="5" onclick="whack(event)">
+                <img id="image-5" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-6" class="mole" data-index="6" onclick="whack(event)">
+                <img id="image-6" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-7" class="mole" data-index="7" onclick="whack(event)">
+                <img id="image-7" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+        <div class="hole">
+            <div id="mole-8" class="mole" data-index="8" onclick="whack(event)">
+                <img id="image-8" class="mole-image" alt="Whackable Image" src="https://placehold.co/100x100/1f2937/FFFFFF?text=👤">
+                <span class="default-emoji text-6xl pointer-events-none" style="display: block;">👤</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Box (Instead of alert()) -->
+    <div id="message-box" class="fixed inset-0 bg-black bg-opacity-75 z-50 items-center justify-center hidden">
+        <div class="bg-gray-700 p-8 rounded-xl shadow-2xl text-center max-w-sm w-11/12 border-4 border-yellow-400">
+            <h2 id="message-title" class="text-3xl font-bold mb-4 text-yellow-300">Game Over!</h2>
+            <p id="message-content" class="text-xl text-gray-200 mb-6">Your final score is: 0</p>
+            <button onclick="hideMessage()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full font-semibold">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        const MOLE_COUNT = 9;
+        const GAME_DURATION = 30; // seconds
+        let score = 0;
+        let timeRemaining = GAME_DURATION;
+        let gameInterval;
+        let popInterval;
+        let lastHoleIndex = -1;
+        let isGameActive = false;
+
+        const scoreDisplay = document.getElementById('score-display');
+        const timeDisplay = document.getElementById('time-display');
+        const startButton = document.getElementById('start-button');
+        const moleImages = Array.from(document.querySelectorAll('.mole-image'));
+        const defaultEmojis = Array.from(document.querySelectorAll('.default-emoji'));
+        const moles = Array.from(document.querySelectorAll('.mole'));
+
+        // --- Utility Functions ---
+
+        /**
+         * Hides all moles.
+         */
+        function hideAllMoles() {
+            moles.forEach(mole => {
+                mole.classList.remove('up');
+                mole.classList.remove('whacked');
+            });
+        }
+
+        /**
+         * Displays a custom message box.
+         * @param {string} title
+         * @param {string} content
+         */
+        function showMessage(title, content) {
+            document.getElementById('message-title').textContent = title;
+            document.getElementById('message-content').textContent = content;
+            document.getElementById('message-box').classList.add('flex');
+            document.getElementById('message-box').classList.remove('hidden');
+            startButton.textContent = "START GAME"; // Reset button text
+            startButton.disabled = false;
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessage() {
+            document.getElementById('message-box').classList.add('hidden');
+            document.getElementById('message-box').classList.remove('flex');
+        }
+
+        // --- Game Logic ---
+
+        /**
+         * Loads the uploaded photo onto all mole elements.
+         * @param {Event} event
+         */
+        function loadPhoto(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const imageUrl = URL.createObjectURL(file);
+                moleImages.forEach(img => {
+                    img.src = imageUrl;
+                    img.style.display = 'block'; // Show the image
+                });
+                defaultEmojis.forEach(emoji => {
+                    emoji.style.display = 'none'; // Hide the default emoji
+                });
+            } else {
+                // If the user clears the selection, revert to emoji
+                moleImages.forEach(img => {
+                    img.style.display = 'none';
+                });
+                defaultEmojis.forEach(emoji => {
+                    emoji.style.display = 'block';
+                });
+            }
+        }
+
+        /**
+         * Gets a random hole index different from the last one.
+         * @returns {number} The new hole index.
+         */
+        function pickRandomHole() {
+            const index = Math.floor(Math.random() * MOLE_COUNT);
+            if (index === lastHoleIndex) {
+                return pickRandomHole(); // Recurse until we find a different one
+            }
+            lastHoleIndex = index;
+            return index;
+        }
+
+        /**
+         * Pops a mole up in a random hole.
+         */
+        function popOut() {
+            // Hide the last mole right before showing the new one
+            if (lastHoleIndex !== -1 && moles[lastHoleIndex]) {
+                 moles[lastHoleIndex].classList.remove('up');
+            }
+
+            const time = Math.random() * 1000 + 500; // Mole stays up for 0.5s to 1.5s
+            const holeIndex = pickRandomHole();
+            const mole = moles[holeIndex];
+
+            // Make it pop up
+            mole.classList.add('up');
+            mole.classList.remove('whacked');
+
+            // Set a timeout to make it go back down
+            setTimeout(() => {
+                mole.classList.remove('up');
+            }, time);
+        }
+
+        /**
+         * Handles the click event on a mole.
+         * @param {Event} event
+         */
+        function whack(event) {
+            if (!isGameActive) return;
+
+            const mole = event.currentTarget;
+
+            // Only count the whack if the mole is currently 'up' and hasn't been whacked yet in this pop cycle
+            if (mole.classList.contains('up') && !mole.classList.contains('whacked')) {
+                score++;
+                scoreDisplay.textContent = score;
+
+                // Provide visual feedback (flashes red and goes down)
+                mole.classList.remove('up');
+                mole.classList.add('whacked');
+
+                // Add a slight haptic/audio effect if possible (omitted for single file simplicity)
+            }
+        }
+
+        /**
+         * The main game loop and timer.
+         */
+        function startGame() {
+            if (isGameActive) {
+                // Prevent starting twice
+                return;
+            }
+
+            // Reset state
+            score = 0;
+            timeRemaining = GAME_DURATION;
+            isGameActive = true;
+            scoreDisplay.textContent = score;
+            timeDisplay.textContent = timeRemaining;
+            startButton.textContent = "Game In Progress...";
+            startButton.disabled = true;
+            hideMessage();
+            hideAllMoles();
+
+            // Start the popping interval (moles pop every 0.6 to 1.5 seconds)
+            popInterval = setInterval(popOut, 600 + Math.random() * 900);
+
+            // Start the timer
+            gameInterval = setInterval(() => {
+                timeRemaining--;
+                timeDisplay.textContent = timeRemaining;
+
+                if (timeRemaining <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        /**
+         * Ends the game, clears intervals, and shows final score.
+         */
+        function endGame() {
+            isGameActive = false;
+            clearInterval(gameInterval);
+            clearInterval(popInterval);
+            hideAllMoles(); // Ensure all moles are down
+
+            showMessage(
+                "Time's Up!",
+                `Awesome job! Your final score is: ${score}.`
+            );
+        }
+
+        // --- Initial Setup ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ensure the default image/emoji setup is correct on load
+            loadPhoto({ target: { files: [] } }); // Initialize with no file to show the emoji
+        });
+
+    </script>
+
+</body>
+</html>
